@@ -18,7 +18,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtMultimedia import *
 from PyQt5.QtGui import *
 from PyQt5.QtNetwork import *
-from PyQt5.QtWebKitWidgets import *
+from PyQt5.QtWebEngineWidgets import *
 
 # PyQT Generated UI Module Imports
 from ui_login import Ui_LoginDialog
@@ -175,7 +175,7 @@ class AirportDialog(QDialog, Ui_AirportDialog):
         self.airportList.clear()
         # Masks user-agent of the HTTP GET request sent to the airport database.
         request = urllib.request.Request("http://www.world-airport-codes.com/search/?s=" + self.txtAirport.text().strip().replace(" ", "+"), headers = {'User-Agent' : 'Mozilla/5.0'})
-        soup = bs4.BeautifulSoup(urllib.request.urlopen(request).read())
+        soup = bs4.BeautifulSoup(urllib.request.urlopen(request).read(), "html.parser")
         routeTable = soup.findChildren("table")
         if (len(routeTable) <= 0): # Provides an error if the airport could not be found in the database.
             QMessageBox.information(self, "Airport Search", ("\"%s\" could not be found." % (self.txtAirport.text().strip())))
@@ -353,7 +353,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.returnDate.setMinimumDateTime(QDateTime.currentDateTime().addDays(1))
 
         # Sets up a web page interpreter, and connects event handlers to the program for interpreting HTTP Data.
-        self.webPage = QWebPage()
+        self.webPage = QWebEnginePage()
         self.webPage.loadFinished.connect(self.getSource)
         self.webPage.loadProgress.connect(self.updateProgress)
 
@@ -422,7 +422,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.information(self, "Search Flights", "You have not selected a To/From Destination.")
         else:
             webUrl = "http://www.kayak.com/flights/%s-%s/%s/%s" % (fromDestination.iata, toDestination.iata, self.departureDate.date().toPyDate(), self.returnDate.date().toPyDate())
-            self.webPage.mainFrame().load(QUrl(webUrl))
+            self.webPage.load(QUrl(webUrl))
             self.flightsTable.clearContents()
             self.flightsTable.setRowCount(0)
             progressDialog.exec_() # Opens up a progress bar dialog to mark loading progress.
@@ -454,12 +454,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             QMessageBox.information(self, "Book Flights", "You have not selected a flight, or the selection you have chosen expired.")
 
+
+    
+
     # Once a HTTP Request is returned from Kayak, its returned flight data is interpreted and populated into a search results table.
     def getSource(self, ok):
         global flightResults
+        soup = None
+        def _callable(self,data):
+            nonlocal soup
+            soup = bs4.BeautifulSoup(data, "html.parser")
         if (ok):
+            import time
             # Uses BeautifulSoup in order to parse Kayak's web page data.
-            soup = bs4.BeautifulSoup(self.webPage.mainFrame().toHtml())
+            self.webPage.toHtml(_callable)
+            while 1:
+                if soup != None:
+                    break
+                else:
+                    time.sleep(0.5) #be nice to cpu
             if (soup.find("div", {"class" : "noresults"}) is None):
                 flightsTable = soup.find_all("div", {"class" : "airlineAndLegs"})
                 flightPrices = soup.find_all("a", {"class" : "results_price"})
